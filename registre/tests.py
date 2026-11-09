@@ -803,3 +803,65 @@ class TestApercuEtDemonstration(TestCase):
                             f"L'enfant {enfant.numero} possède la dose {cle_present} (théorique {d_theo_present}) "
                             f"alors que la dose {cle_manq} (théorique {d_theo_manq}) est manquante, hors doses du jour."
                         )
+
+    def test_jeu_demonstration_doses_de_naissance_coherentes(self):
+        """Dès qu'un enfant a une dose, il possède les trois doses de naissance."""
+        call_command("jeu_demonstration")
+        centre_demo = get_user_model().objects.get(
+            username="agent.demo"
+        ).agent.centre
+        for enfant in Enfant.objects.filter(centre=centre_demo):
+            cles = set(
+                Dose.objects.filter(enfant=enfant).values_list("cle", flat=True)
+            )
+            if not cles:
+                continue
+            for cle_naissance in ("bcg", "vpo_0", "hepb_0"):
+                self.assertIn(
+                    cle_naissance,
+                    cles,
+                    msg=(
+                        f"L'enfant {enfant.numero} possède des doses sans la dose "
+                        f"de naissance {cle_naissance}."
+                    ),
+                )
+
+    def test_jeu_demonstration_minorites_et_aucune_dose_future(self):
+        """Le jeu conserve des enfants sans dose, des enfants à jour et aucune dose future."""
+        call_command("jeu_demonstration")
+        centre_demo = get_user_model().objects.get(
+            username="agent.demo"
+        ).agent.centre
+        aujourd_hui = date.today()
+        enfants = list(Enfant.objects.filter(centre=centre_demo))
+        self.assertEqual(len(enfants), 45)
+
+        sans_dose = 0
+        a_jour = 0
+        for enfant in enfants:
+            doses = list(Dose.objects.filter(enfant=enfant))
+            if not doses:
+                sans_dose += 1
+                continue
+            self.assertTrue(
+                all(d.date_administration <= aujourd_hui for d in doses),
+                msg=f"L'enfant {enfant.numero} possède une dose future.",
+            )
+            if len(doses) == len(calendrier.CALENDRIER_PEV):
+                a_jour += 1
+
+        self.assertGreater(sans_dose, 0)
+        self.assertLess(sans_dose, len(enfants) // 2)
+        self.assertGreater(a_jour, 0)
+        self.assertLess(a_jour, len(enfants) // 2)
+
+        doses_du_jour = Dose.objects.filter(
+            enfant__centre=centre_demo, date_administration=aujourd_hui
+        )
+        self.assertGreater(doses_du_jour.count(), 0)
+        ages = [
+            calendrier.age_en_mois(d.enfant.date_naissance, aujourd_hui)
+            for d in doses_du_jour
+        ]
+        self.assertTrue(any(age < 12 for age in ages))
+        self.assertTrue(any(age >= 12 for age in ages))
