@@ -1,0 +1,136 @@
+{% extends "registre/base.html" %}
+
+{% block titre %}Rapport de séance du {{ jour|date:"d/m/Y" }}{% endblock %}
+
+{% block contenu %}
+<div class="carte">
+    <div class="carte-entete">
+        <div>
+            <h1>Rapport de fin de séance</h1>
+            <p class="texte-discret">
+                {{ centre.nom }} - Date de séance : <strong>{{ jour|date:"d/m/Y" }}</strong>
+            </p>
+        </div>
+        <div class="barre-actions no-print">
+            <a href="{% url 'registre:seance_dhis2_json' %}?jour={{ jour|date:'Y-m-d' }}" class="bouton bouton-principal">Exporter JSON DHIS2</a>
+            <a href="{% url 'registre:seance_dhis2_csv' %}?jour={{ jour|date:'Y-m-d' }}" class="bouton bouton-secondaire">Exporter CSV DHIS2</a>
+            <button type="button" onclick="window.print()" class="bouton bouton-secondaire">Imprimer</button>
+        </div>
+    </div>
+
+    <form method="get" action="{% url 'registre:seance' %}" class="barre-recherche no-print" style="margin-bottom: 16px;">
+        <label for="id_jour" style="font-weight: 600;">Jour de la séance :</label>
+        <input
+            type="date"
+            id="id_jour"
+            name="jour"
+            value="{{ jour|date:'Y-m-d' }}"
+            style="width: auto; min-width: 170px;"
+        >
+        <button type="submit" class="bouton bouton-principal">Afficher</button>
+        <a href="{% url 'registre:seance' %}" class="bouton bouton-secondaire">Aujourd'hui</a>
+    </form>
+
+    <div class="grille-infos">
+        <div class="info-bloc">
+            <div class="info-libelle">Jeu de données DHIS2</div>
+            <div class="info-valeur"><span class="code-mono">{{ jeu_de_donnees }}</span></div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Période (AAAAMMJJ)</div>
+            <div class="info-valeur"><span class="code-mono">{{ periode }}</span></div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Unité d'organisation</div>
+            <div class="info-valeur">
+                <span class="code-mono">{{ code_unite }}</span>
+                {% if code_fosa_provisoire %}
+                <div class="texte-discret">Identifiant provisoire local (code FOSA non renseigné)</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Total des doses du jour</div>
+            <div class="info-valeur">{{ total_doses }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="carte">
+    <h2>Synthèse par antigène et tranche d'âge (à la date d'administration)</h2>
+    <p class="texte-discret">
+        Les fichiers JSON et CSV sont générés localement sur le poste pour import ultérieur dans DHIS2, sans aucun envoi automatique ni connexion sortante.
+    </p>
+
+    {% if lignes %}
+    <div class="table-conteneur">
+        <table>
+            <thead>
+                <tr>
+                    <th>Antigène</th>
+                    <th>Code élément DHIS2</th>
+                    <th>Moins de 1 an</th>
+                    <th>1 an et plus</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in lignes %}
+                <tr>
+                    <td><strong>{{ ligne.nom }}</strong></td>
+                    <td><span class="code-mono">{{ ligne.code_element }}</span></td>
+                    <td>{{ ligne.moins_1_an }}</td>
+                    <td>{{ ligne.un_an_et_plus }}</td>
+                    <td><strong>{{ ligne.total }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th colspan="2">Total de la séance</th>
+                    <th>{{ total_moins_1_an }}</th>
+                    <th>{{ total_1_an_et_plus }}</th>
+                    <th>{{ total_doses }}</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% else %}
+    <p class="texte-discret">Aucune dose n'a été enregistrée pour la journée du {{ jour|date:"d/m/Y" }}.</p>
+    {% endif %}
+</div>
+
+{% if doses %}
+<div class="carte">
+    <h2>Détail des doses administrées le {{ jour|date:"d/m/Y" }}</h2>
+    <div class="table-conteneur">
+        <table>
+            <thead>
+                <tr>
+                    <th>Numéro</th>
+                    <th>Enfant</th>
+                    <th>Dose</th>
+                    <th>Lot</th>
+                    <th>Agent</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dose in doses %}
+                <tr>
+                    <td><span class="code-mono">{{ dose.enfant.numero }}</span></td>
+                    <td>
+                        <a href="{% url 'registre:enfant' dose.enfant.pk %}">
+                            {{ dose.enfant.nom }} {{ dose.enfant.prenom }}
+                        </a>
+                    </td>
+                    <td>{{ dose.nom_dose }}</td>
+                    <td>{{ dose.lot|default:"-" }}</td>
+                    <td>{{ dose.agent|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
