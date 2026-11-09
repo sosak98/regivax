@@ -96,6 +96,29 @@
     </div>
     {% endif %}
 
+    <div style="margin-top: 20px; border-top: 1px dashed #94a3b8; padding-top: 14px;">
+        <h2>Transfert vers un autre centre</h2>
+        <p class="texte-discret">
+            Présentez cette fiche au nouveau centre. Le code contient le numéro de registre,
+            l'identité de l'enfant, sa date de naissance, le nom de la mère et les doses reçues
+            avec leur date. Il ne contient ni téléphone ni quartier. Un poste sans caméra
+            saisit le code à la main.
+        </p>
+        <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 260px;">
+                <div class="info-libelle">Code de transfert</div>
+                <div class="code-mono" style="white-space: pre-wrap; word-break: break-all; margin-top: 4px;">{{ code_transfert }}</div>
+                <div class="texte-discret" style="margin-top: 6px;">
+                    Code à présenter au nouveau centre. Les tirets et les espaces ne sont pas saisis.
+                </div>
+            </div>
+            <div style="max-width: 180px;">
+                <div class="info-libelle">Code QR du même contenu</div>
+                <div style="margin-top: 4px;">{{ qr_transfert|safe }}</div>
+            </div>
+        </div>
+    </div>
+
     <p class="texte-discret" style="margin-top: 16px;">
         Mémento administratif délivré au centre de santé le {{ aujourd_hui|date:"d/m/Y" }}.
         Ce document ne remplace pas le carnet de santé conservé par la famille et ne constitue pas un acte médical.

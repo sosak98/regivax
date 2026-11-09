@@ -10,7 +10,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from . import snis
+from . import snis, transfert
 from .apercu import apercu_actif
 from .calendrier import (
     AGE_LIMITE_RATTRAPAGE_MOIS,
@@ -316,6 +316,11 @@ def rendez_vous(request, pk):
         if item["statut"] not in ("Reçu", "À la maternité")
     ]
 
+    code_transfert = transfert.encoder(
+        enfant_obj, enfant_obj.doses.all()
+    )
+    qr_transfert = transfert.qr_svg(code_transfert)
+
     return render(
         request,
         "registre/rendez_vous.html",
@@ -327,7 +332,117 @@ def rendez_vous(request, pk):
             "prochain_rdv": prochain,
             "doses_prochain_jour": doses_prochain_jour,
             "doses_restantes": doses_restantes,
+            "code_transfert": code_transfert,
+            "qr_transfert": qr_transfert,
             "aujourd_hui": aujourd_hui,
+        },
+    )
+
+
+@login_required
+def reprendre(request):
+    """Reprise d'un enfant déjà enregistré dans un autre centre."""
+    centre = _obtenir_centre_agent(request.user)
+    if centre is None:
+        return render(request, "registre/sans_centre.html", status=403)
+
+    code_saisi = ""
+    numero_saisi = ""
+    donnees = None
+    existant = None
+    erreur = ""
+
+    if request.method == "POST":
+        action = request.POST.get("action", "verifier")
+        code_saisi = (request.POST.get("code") or "").strip()
+        numero_saisi = (request.POST.get("numero_local") or "").strip()
+        try:
+            donnees_lues = transfert.decoder(code_saisi)
+        except transfert.CodeTransfertInvalide as exc:
+            erreur = str(exc)
+        else:
+            existant = transfert.trouver_enfant_existant(
+                centre,
+                donnees_lues["nom"],
+                donnees_lues["prenom"],
+                donnees_lues["date_naissance"],
+            )
+            if action == "confirmer":
+                if existant is not None:
+                    ajoutees = transfert.completer_doses_absentes(
+                        existant, donnees_lues, request.user
+                    )
+                    messages.success(
+                        request,
+                        f"L'enfant {existant.nom} {existant.prenom} est déjà "
+                        f"inscrit dans ce centre : aucun doublon n'a été créé. "
+                        f"{ajoutees} dose(s) absente(s) ont été complétée(s) "
+                        f"sur la fiche existante.",
+                    )
+                    return redirect("registre:enfant", pk=existant.pk)
+
+                numero_local = numero_saisi
+                if not numero_local:
+                    erreur = (
+                        "Indiquez le numéro de registre local attribué par le "
+                        "centre avant de créer la fiche."
+                    )
+                elif len(numero_local) > 50:
+                    erreur = (
+                        "Le numéro de registre local ne peut pas dépasser "
+                        "50 caractères."
+                    )
+                elif Enfant.objects.filter(
+                    centre=centre, numero=numero_local
+                ).exists():
+                    erreur = (
+                        "Ce numéro de registre local est déjà utilisé dans ce "
+                        "centre. Choisissez un autre numéro."
+                    )
+                else:
+                    enfant_cree = transfert.creer_enfant_depuis_code(
+                        centre,
+                        donnees_lues,
+                        numero_local,
+                        request.user,
+                    )
+                    messages.success(
+                        request,
+                        f"L'enfant {enfant_cree.nom} {enfant_cree.prenom} a été "
+                        f"repris dans ce centre sous le numéro "
+                        f"{enfant_cree.numero}, avec "
+                        f"{len(donnees_lues['doses'])} dose(s) reprise(s).",
+                    )
+                    return redirect("registre:enfant", pk=enfant_cree.pk)
+            donnees = donnees_lues
+
+    doses_recap = []
+    if donnees is not None:
+        doses_recap = [
+            {
+                "nom": CALENDRIER_PAR_CLE[cle]["nom"],
+                "date": date_administration,
+            }
+            for cle, date_administration in sorted(
+                donnees["doses"].items(), key=lambda item: item[1]
+            )
+        ]
+
+    return render(
+        request,
+        "registre/reprendre.html",
+        {
+            "centre": centre,
+            "code_saisi": code_saisi,
+            "numero_saisi": numero_saisi,
+            "numero_suggere": (
+                transfert.proposer_numero_local(centre) if donnees else ""
+            ),
+            "donnees": donnees,
+            "doses_recap": doses_recap,
+            "existant": existant,
+            "erreur": erreur,
+            "aujourd_hui": date.today(),
         },
     )
 

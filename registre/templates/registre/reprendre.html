@@ -1,0 +1,154 @@
+{% extends "registre/base.html" %}
+
+{% block titre %}Reprendre un enfant{% endblock %}
+
+{% block contenu %}
+<div class="carte">
+    <div class="carte-entete">
+        <div>
+            <h1>Reprendre un enfant déjà enregistré</h1>
+            <p class="texte-discret">Centre : {{ centre.nom }} ({{ centre.commune }})</p>
+        </div>
+        <a href="{% url 'registre:accueil' %}" class="bouton bouton-secondaire">Retour au registre</a>
+    </div>
+
+    <p class="texte-discret">
+        La famille présente la fiche de rendez-vous remise par le centre quitté.
+        Le code de transfert qu'elle porte contient uniquement le numéro de registre,
+        l'identité de l'enfant, sa date de naissance, le nom de la mère et les doses
+        reçues avec leur date. Il ne contient ni téléphone ni quartier, et aucune
+        donnée ne transite par un serveur. Un poste sans caméra saisit le code à la main.
+    </p>
+
+    {% if erreur %}
+    <div class="alerte alerte-error">
+        {{ erreur }}
+    </div>
+    {% endif %}
+
+    {% if not donnees %}
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="verifier">
+        <div class="champ-groupe">
+            <label for="id_code">Code de transfert</label>
+            <textarea
+                id="id_code"
+                name="code"
+                rows="4"
+                autofocus
+                placeholder="RGVX1-XXXXX-XXXXX-..."
+                style="font-family: ui-monospace, monospace;"
+            >{{ code_saisi }}</textarea>
+            <div class="texte-discret">
+                Le code commence par RGVX1. Les tirets, les espaces et les retours à la ligne sont ignorés.
+            </div>
+        </div>
+        <div class="barre-actions">
+            <button type="submit" class="bouton bouton-principal">Vérifier le code</button>
+            <a href="{% url 'registre:accueil' %}" class="bouton bouton-secondaire">Annuler</a>
+        </div>
+    </form>
+    {% else %}
+    <h2>Récapitulatif avant création</h2>
+    <p class="texte-discret">
+        Vérifiez ces informations avec la famille avant toute écriture dans le registre du centre.
+    </p>
+
+    <div class="grille-infos" style="margin-bottom: 16px;">
+        <div class="info-bloc">
+            <div class="info-libelle">Nom et prénom</div>
+            <div class="info-valeur">{{ donnees.nom }} {{ donnees.prenom }}</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Sexe</div>
+            <div class="info-valeur">{% if donnees.sexe == "M" %}Masculin{% else %}Féminin{% endif %}</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Date de naissance</div>
+            <div class="info-valeur">{{ donnees.date_naissance|date:"d/m/Y" }}</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Nom de la mère</div>
+            <div class="info-valeur">{{ donnees.nom_mere }}</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Numéro de registre d'origine</div>
+            <div class="info-valeur"><span class="code-mono">{{ donnees.numero }}</span></div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Doses reprises</div>
+            <div class="info-valeur">{{ donnees.doses|length }}</div>
+        </div>
+    </div>
+
+    {% if doses_recap %}
+    <div class="table-conteneur">
+        <table>
+            <thead>
+                <tr>
+                    <th>Dose reprise</th>
+                    <th>Date d'administration d'origine</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dose in doses_recap %}
+                <tr>
+                    <td>{{ dose.nom }}</td>
+                    <td>{{ dose.date|date:"d/m/Y" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if existant %}
+    <div class="alerte alerte-info" style="margin-top: 16px;">
+        Un enfant de ce centre porte déjà les mêmes nom, prénom et date de naissance
+        (numéro <span class="code-mono">{{ existant.numero }}</span>).
+        Aucun doublon ne sera créé. Seules les doses absentes de la fiche existante
+        seront complétées, avec leurs dates d'origine.
+    </div>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="confirmer">
+        <input type="hidden" name="code" value="{{ code_saisi }}">
+        <div class="barre-actions">
+            <button type="submit" class="bouton bouton-principal">Ouvrir la fiche existante et compléter les doses absentes</button>
+            <a href="{% url 'registre:reprendre' %}" class="bouton bouton-secondaire">Saisir un autre code</a>
+        </div>
+    </form>
+    {% else %}
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="confirmer">
+        <input type="hidden" name="code" value="{{ code_saisi }}">
+        <div class="champ-groupe">
+            <label for="id_numero_local">Numéro de registre local attribué par le centre</label>
+            <input
+                type="text"
+                id="id_numero_local"
+                name="numero_local"
+                value="{{ numero_saisi|default:numero_suggere }}"
+                required
+            >
+            <div class="texte-discret">
+                Ce numéro remplace le numéro du centre quitté dans le registre local.
+                Le numéro d'origine est conservé sur la fiche.
+            </div>
+        </div>
+        <div class="barre-actions">
+            <button type="submit" class="bouton bouton-principal">Créer la fiche dans ce centre</button>
+            <a href="{% url 'registre:reprendre' %}" class="bouton bouton-secondaire">Saisir un autre code</a>
+        </div>
+    </form>
+    {% endif %}
+
+    <p class="texte-discret" style="margin-top: 16px;">
+        La fiche créée mentionnera que l'enfant provient d'un transfert, avec la date
+        de reprise du {{ aujourd_hui|date:"d/m/Y" }}.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}

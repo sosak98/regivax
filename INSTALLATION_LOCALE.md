@@ -64,6 +64,19 @@ Le script :
 4. Créez une fiche `Agent` reliant chaque utilisateur au centre de santé.
 5. Déconnectez-vous de l'administration et connectez-vous sur `http://127.0.0.1:8000/connexion/`.
 
-## 5. Sauvegarde des données
+## 5. Reprendre un enfant déjà enregistré dans un autre centre
+
+1. Imprimez la fiche de rendez-vous de l'enfant depuis sa fiche individuelle. Le bloc Transfert en bas de page porte un code recopiable à la main et un code QR du même contenu.
+2. Dans le centre d'accueil, ouvrez la page `/enfant/reprendre/` depuis le registre, saisissez le code puis vérifiez le récapitulatif avant confirmation.
+3. Le centre d'accueil attribue son propre numéro de registre local ; le numéro du centre quitté est conservé sur la fiche, avec la date de reprise.
+4. Si un enfant du centre porte déjà les mêmes nom, prénom et date de naissance, l'application ne crée pas de doublon et complète uniquement les doses absentes.
+
+Limites du mécanisme :
+
+- Un poste sans caméra saisit le code à la main ; le code QR n'est qu'un confort et aucun lecteur n'est requis.
+- Les données du transfert voyagent sur la fiche papier remise à la famille. Aucune donnée ne transite par un serveur et aucun appel réseau n'est effectué pour produire le code QR.
+- Si la famille a perdu sa fiche, la réinscription classique reste possible ; les doses déjà reçues peuvent ensuite être saisies sur la fiche.
+
+## 6. Sauvegarde des données
 
 Toutes les données du registre sont stockées localement dans le fichier `db.sqlite3`. Effectuez une copie régulière de ce fichier sur un support externe sécurisé en fin de semaine ou selon la procédure interne du centre.
