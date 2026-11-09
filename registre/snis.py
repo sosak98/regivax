@@ -17,6 +17,13 @@ from .calendrier import (
     normaliser_cle,
 )
 
+# Les codes de tranche d'âge MOINS_1_AN et 1_AN_ET_PLUS sont des codes locaux,
+# choisis par RegiVax pour distinguer les deux tranches d'âge du rapport de séance.
+# Ils devront correspondre aux identifiants configurés dans l'instance DHIS2
+# nationale au moment de la mise en service, en accord avec l'administration.
+# Aucune convention nationale n'existe à ce jour pour ces identifiants.
+# Ils sont déclarés en schéma CODE (categoryOptionCombo) dans les exports
+# dataValueSets JSON et CSV produits localement.
 JEU_DE_DONNEES = "PEV_SEANCE_VACCINATION"
 AGE_MOINS_1_AN = "MOINS_1_AN"
 AGE_1_AN_ET_PLUS = "1_AN_ET_PLUS"

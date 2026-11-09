@@ -757,3 +757,49 @@ class TestApercuEtDemonstration(TestCase):
         finally:
             os.environ.pop("APERCU", None)
             importlib.reload(regivax_settings)
+
+    def test_jeu_demonstration_bcg_present_si_vaccine(self):
+        """Tout enfant ayant au moins une dose possède le BCG."""
+        call_command("jeu_demonstration")
+        User = get_user_model()
+        demo_user = User.objects.get(username="agent.demo")
+        centre_demo = demo_user.agent.centre
+        enfants = Enfant.objects.filter(centre=centre_demo)
+        for enfant in enfants:
+            doses = Dose.objects.filter(enfant=enfant)
+            if doses.exists():
+                self.assertTrue(
+                    doses.filter(cle="bcg").exists(),
+                    msg=f"L'enfant {enfant.numero} possède {doses.count()} dose(s) mais pas de BCG",
+                )
+
+    def test_jeu_demonstration_coherence_chronologique_hors_doses_du_jour(self):
+        """Aucun enfant ne possède une dose dont la date théorique est postérieure à une dose manquante, hors doses du jour."""
+        call_command("jeu_demonstration")
+        User = get_user_model()
+        demo_user = User.objects.get(username="agent.demo")
+        centre_demo = demo_user.agent.centre
+        aujourd_hui = date.today()
+        for enfant in Enfant.objects.filter(centre=centre_demo):
+            doses_hors_jour = Dose.objects.filter(enfant=enfant).exclude(
+                date_administration=aujourd_hui
+            )
+            cles_presentes = {d.cle for d in doses_hors_jour}
+            entrees_eligibles = []
+            for entree in calendrier.CALENDRIER_PEV:
+                d_theo = calendrier.date_theorique(enfant.date_naissance, entree)
+                if d_theo > aujourd_hui:
+                    continue
+                entrees_eligibles.append((d_theo, entree["cle"]))
+            entrees_eligibles.sort(key=lambda x: (x[0], calendrier.ORDRE_PAR_CLE.get(x[1], 999)))
+            for d_theo_present, cle_present in entrees_eligibles:
+                if cle_present not in cles_presentes:
+                    continue
+                for d_theo_manq, cle_manq in entrees_eligibles:
+                    if cle_manq in cles_presentes:
+                        continue
+                    if d_theo_manq < d_theo_present:
+                        self.fail(
+                            f"L'enfant {enfant.numero} possède la dose {cle_present} (théorique {d_theo_present}) "
+                            f"alors que la dose {cle_manq} (théorique {d_theo_manq}) est manquante, hors doses du jour."
+                        )

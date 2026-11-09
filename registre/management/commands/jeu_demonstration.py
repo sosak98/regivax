@@ -184,43 +184,79 @@ class Command(BaseCommand):
         lots_fictifs = ["LOT-DEMO-A", "LOT-DEMO-B", "LOT-DEMO-C"]
         total_doses = 0
 
-        for idx, (enfant, _age_jours) in enumerate(enfants_crees):
+        # Nouvelle règle de génération par enfant : tirage d'une date de décrochage
+        # comprise entre la naissance et aujourd'hui. Toutes les doses dont la
+        # date théorique précède strictement cette date sont enregistrées, aucune
+        # de celles qui la suivent ne l'est. Cela garantit la cohérence chronologique :
+        # les doses de naissance (BCG, VPO 0) sont toujours présentes dès que l'enfant
+        # a au moins une dose. Une minorité d'enfants est laissée sans aucune dose
+        # (décrochage à la naissance) et une minorité est maintenue parfaitement à jour
+        # (décrochage au lendemain de la date du jour) pour conserver la diversité.
+        for enfant, age_jours in enfants_crees:
+            # Tirage de la date de décrochage
+            r = rng.random()
+            if r < 0.10:
+                # Minorité sans aucune dose : décrochage exactement à la naissance
+                date_decrochage = enfant.date_naissance
+            elif r < 0.22:
+                # Minorité parfaitement à jour : décrochage au lendemain, inclut toutes les doses dues
+                date_decrochage = aujourd_hui + timedelta(days=1)
+            else:
+                # Cas général : date aléatoire entre naissance+1 jour et aujourd'hui inclus
+                decalage_decrochage = rng.randint(1, age_jours)
+                date_decrochage = enfant.date_naissance + timedelta(days=decalage_decrochage)
+
             derniere_par_serie = {}
-            taux_progression = rng.uniform(0.45, 0.95)
             doses_a_creer = []
 
             for entree in CALENDRIER_PEV:
                 cle = entree["cle"]
-                serie = entree["serie"]
-                d_theo = date_theorique(enfant.date_naissance, entree)
+                raw_d_theo = date_theorique(enfant.date_naissance, entree)
 
-                if d_theo > aujourd_hui:
+                # On n'enregistre que les doses dont la date théorique précède strictement la date de décrochage
+                if raw_d_theo >= date_decrochage:
+                    continue
+                # Par construction raw_d_theo < date_decrochage <= aujourd_hui+1, donc
+                # raw_d_theo <= aujourd_hui pour les cas généraux. On garde le garde-fou
+                # pour les enfants très jeunes dont certaines doses sont encore futures.
+                if raw_d_theo > aujourd_hui:
                     continue
 
-                if entree.get("maternite"):
-                    if rng.random() > 0.45:
-                        continue
+                # Détermination de la date d'administration
+                if entree.get("maternite") or entree.get("age_semaines") == 0:
+                    # Doses de naissance : administrées à la naissance
                     date_admin = enfant.date_naissance
                 else:
+                    # Respect de l'intervalle minimal de 4 semaines dans la même série
+                    d_theo_eff = raw_d_theo
+                    serie = entree["serie"]
                     if serie in derniere_par_serie:
                         date_min = derniere_par_serie[serie] + timedelta(
                             weeks=INTERVALLE_MIN_SEMAINES
                         )
-                        if d_theo < date_min:
-                            d_theo = date_min
-                    if d_theo > aujourd_hui:
-                        continue
-
+                        if d_theo_eff < date_min:
+                            d_theo_eff = date_min
+                        if d_theo_eff > aujourd_hui:
+                            continue
+                        if d_theo_eff >= date_decrochage:
+                            # Si l'ajustement pousse la date au-delà du décrochage, on conserve
+                            # la règle brute : la dose aurait dû être avant le décrochage, on l'inclut
+                            # tout de même avec la date effective ajustée, sauf si elle devient future.
+                            pass
                     decalage = rng.randint(0, 12)
-                    date_admin = min(d_theo + timedelta(days=decalage), aujourd_hui)
+                    # Première tentative : d_theo_eff + décalage, plafonnée à aujourd'hui
+                    date_admin_candidate = min(
+                        d_theo_eff + timedelta(days=decalage), aujourd_hui
+                    )
+                    if date_admin_candidate >= aujourd_hui:
+                        # Si le plafond est atteint (dose due aujourd'hui), on retombe sur la date théorique
+                        date_admin = d_theo_eff
+                    else:
+                        date_admin = date_admin_candidate
                     if date_admin >= aujourd_hui:
-                        date_admin = d_theo
-                    if date_admin >= aujourd_hui:
-                        continue
-                    if rng.random() > taux_progression:
                         continue
 
-                derniere_par_serie[serie] = date_admin
+                derniere_par_serie[entree["serie"]] = date_admin
                 doses_a_creer.append(
                     Dose(
                         enfant=enfant,
@@ -236,6 +272,9 @@ class Command(BaseCommand):
 
         # Garantir plusieurs doses datées d'aujourd'hui chez des enfants de moins d'un an
         # et d'un an et plus afin que le rapport de séance du jour ne soit jamais vide.
+        # Pour préserver la cohérence du jeu (BCG présent dès la première dose) et la
+        # minorité d'enfants sans aucune dose, les doses non-BCG ne sont attribuées
+        # qu'à des enfants possédant déjà le BCG.
         cibles_jour = [
             (0, "bcg", False),
             (6, "penta_1", False),
@@ -259,11 +298,36 @@ class Command(BaseCommand):
                 )
                 if d_theo_cand > aujourd_hui:
                     continue
-                if not Dose.objects.filter(enfant=enfant_cand, cle=cle_cible).exists():
-                    candidat = enfant_cand
-                    break
+                if Dose.objects.filter(enfant=enfant_cand, cle=cle_cible).exists():
+                    continue
+                # Préserver la règle BCG : aucune dose non-BCG n'est ajoutée à un enfant sans BCG
+                if cle_cible != "bcg":
+                    if not Dose.objects.filter(enfant=enfant_cand, cle="bcg").exists():
+                        continue
+                candidat = enfant_cand
+                break
             if candidat is None:
-                candidat, _ = enfants_crees[index_defaut]
+                # Recherche d'un repli respectant les mêmes contraintes d'âge et de BCG
+                for offset in range(len(enfants_crees)):
+                    idx_repli = (index_defaut + offset) % len(enfants_crees)
+                    enfant_repli, age_j_repli = enfants_crees[idx_repli]
+                    if un_an_ou_plus and age_j_repli < 370:
+                        continue
+                    if not un_an_ou_plus and age_j_repli >= 365:
+                        continue
+                    d_theo_repli = date_theorique(
+                        enfant_repli.date_naissance,
+                        next(e for e in CALENDRIER_PEV if e["cle"] == cle_cible),
+                    )
+                    if d_theo_repli > aujourd_hui:
+                        continue
+                    if cle_cible != "bcg":
+                        if not Dose.objects.filter(enfant=enfant_repli, cle="bcg").exists():
+                            continue
+                    candidat = enfant_repli
+                    break
+                if candidat is None:
+                    candidat, _ = enfants_crees[index_defaut]
             dose_obj, cree = Dose.objects.update_or_create(
                 enfant=candidat,
                 cle=cle_cible,

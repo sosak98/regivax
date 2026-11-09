@@ -57,9 +57,12 @@
 </div>
 
 <div class="carte">
-    <h2>Synthèse par antigène et tranche d'âge (à la date d'administration)</h2>
+    <h2>Synthèse par antigène ou supplémentation et tranche d'âge (à la date d'administration)</h2>
     <p class="texte-discret">
         Les fichiers JSON et CSV sont générés localement sur le poste pour import ultérieur dans DHIS2, sans aucun envoi automatique ni connexion sortante.
+    </p>
+    <p class="texte-discret">
+        Les identifiants de tranche d'âge sont déclarés en schéma CODE et se règlent au moment de la mise en service, en accord avec l'administration.
     </p>
 
     {% if lignes %}
@@ -67,7 +70,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>Antigène</th>
+                    <th>Antigène ou supplémentation</th>
                     <th>Code élément DHIS2</th>
                     <th>Moins de 1 an</th>
                     <th>1 an et plus</th>
