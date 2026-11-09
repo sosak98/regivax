@@ -51,6 +51,13 @@
         </div>
     </div>
 
+    {% if enfant.est_issu_d_un_transfert %}
+    <div class="alerte alerte-info" style="margin-top: 14px;">
+        Enfant repris d'un autre centre le {{ enfant.date_reprise|date:"d/m/Y" }}
+        (numéro de registre d'origine : <span class="code-mono">{{ enfant.numero_origine }}</span>).
+    </div>
+    {% endif %}
+
     {% if depasse_rattrapage %}
     <div class="alerte alerte-info" style="margin-top: 14px;">
         Âge supérieur à {{ age_limite_rattrapage_mois }} mois (limite usuelle de rattrapage du calendrier de routine).

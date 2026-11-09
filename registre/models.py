@@ -84,6 +84,19 @@ class Enfant(models.Model):
         "Numéro du registre papier",
         max_length=50,
     )
+    numero_origine = models.CharField(
+        "Numéro de registre d'origine",
+        max_length=50,
+        blank=True,
+        default="",
+        help_text="Numéro du registre du centre quitté, en cas de transfert.",
+    )
+    date_reprise = models.DateField(
+        "Date de reprise",
+        null=True,
+        blank=True,
+        help_text="Date à laquelle la fiche a été reprise dans ce centre.",
+    )
     nom = models.CharField("Nom", max_length=100)
     prenom = models.CharField("Prénom", max_length=100)
     sexe = models.CharField("Sexe", max_length=1, choices=SEXE_CHOIX)
@@ -118,6 +131,10 @@ class Enfant(models.Model):
     def doses_recues(self):
         """Retourne un dictionnaire {clé_vaccin: date_administration}."""
         return {dose.cle: dose.date_administration for dose in self.doses.all()}
+
+    def est_issu_d_un_transfert(self) -> bool:
+        """Indique si la fiche provient d'une reprise depuis un autre centre."""
+        return bool((self.numero_origine or "").strip())
 
 
 class Dose(models.Model):

@@ -8,13 +8,14 @@ import io
 import os
 from pathlib import Path
 from unittest.mock import patch
+import re
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from registre import calendrier, snis
+from registre import calendrier, snis, transfert
 from registre.apercu import est_mode_apercu
 from registre.models import Agent, Centre, Dose, Enfant
 
@@ -334,6 +335,7 @@ class TestVuesEtFormulaires(TestCase):
         urls_protegees = [
             reverse("registre:accueil"),
             reverse("registre:nouvel_enfant"),
+            reverse("registre:reprendre"),
             reverse("registre:enfant", args=[self.enfant_a1.pk]),
             reverse("registre:rendez_vous", args=[self.enfant_a1.pk]),
             reverse("registre:seance"),
@@ -865,3 +867,287 @@ class TestApercuEtDemonstration(TestCase):
         ]
         self.assertTrue(any(age < 12 for age in ages))
         self.assertTrue(any(age >= 12 for age in ages))
+
+
+class TestTransfert(TestCase):
+    """Tests du code de transfert et de la reprise dans un autre centre."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.centre_origine = Centre.objects.create(
+            nom="Centre Origine",
+            commune="Ouidah",
+            zone_sanitaire="Ouidah",
+            code_fosa="FOSA-ORIGINE",
+        )
+        self.centre_accueil = Centre.objects.create(
+            nom="Centre Accueil",
+            commune="Cotonou",
+            zone_sanitaire="Cotonou",
+            code_fosa="FOSA-ACCUEIL",
+        )
+        self.user_origine = User.objects.create_user(
+            "agent_origine", password="motdepasse_o"
+        )
+        Agent.objects.create(
+            utilisateur=self.user_origine, centre=self.centre_origine
+        )
+        self.user_accueil = User.objects.create_user(
+            "agent_accueil", password="motdepasse_a"
+        )
+        Agent.objects.create(
+            utilisateur=self.user_accueil, centre=self.centre_accueil
+        )
+
+        self.enfant = Enfant.objects.create(
+            centre=self.centre_origine,
+            numero="ORIG-007",
+            nom="Tossou",
+            prenom="Adjoua",
+            sexe="F",
+            date_naissance=date.today() - timedelta(days=300),
+            nom_mere="Kpadonou Solange",
+            telephone="97000000",
+            quartier="Secteur confidentiel",
+            cree_par=self.user_origine,
+        )
+        self.dates_doses = {
+            "bcg": self.enfant.date_naissance,
+            "penta_1": self.enfant.date_naissance + timedelta(days=45),
+            "var_1": self.enfant.date_naissance + timedelta(days=275),
+        }
+        for cle, date_administration in self.dates_doses.items():
+            Dose.objects.create(
+                enfant=self.enfant,
+                cle=cle,
+                date_administration=date_administration,
+                agent=self.user_origine,
+            )
+        self.code = transfert.encoder(self.enfant, self.enfant.doses.all())
+
+    def _modifier_un_caractere(self):
+        index = len(self.code) // 2
+        while self.code[index] == "-":
+            index += 1
+        remplacement = "0" if self.code[index] != "0" else "1"
+        return self.code[:index] + remplacement + self.code[index + 1 :]
+
+    def test_code_produit_puis_relu_redonne_les_memes_doses(self):
+        donnees = transfert.decoder(self.code)
+        self.assertEqual(donnees["numero"], "ORIG-007")
+        self.assertEqual(donnees["nom"], "Tossou")
+        self.assertEqual(donnees["prenom"], "Adjoua")
+        self.assertEqual(donnees["sexe"], "F")
+        self.assertEqual(donnees["date_naissance"], self.enfant.date_naissance)
+        self.assertEqual(donnees["nom_mere"], "Kpadonou Solange")
+        self.assertEqual(donnees["doses"], self.dates_doses)
+
+    def test_code_modifie_d_un_caractere_est_refuse(self):
+        code_modifie = self._modifier_un_caractere()
+        self.assertNotEqual(code_modifie, self.code)
+        with self.assertRaises(transfert.CodeTransfertInvalide):
+            transfert.decoder(code_modifie)
+
+    def test_code_tronque_est_refuse(self):
+        with self.assertRaises(transfert.CodeTransfertInvalide):
+            transfert.decoder(self.code[:-14])
+
+    def test_code_sans_prefixe_ou_caractere_inconnu_est_refuse(self):
+        with self.assertRaises(transfert.CodeTransfertInvalide):
+            transfert.decoder(self.code.replace("RGVX1", "RGVX2", 1))
+        with self.assertRaises(transfert.CodeTransfertInvalide):
+            transfert.decoder(self.code[:10] + "I" + self.code[11:])
+
+    def test_code_ne_contient_ni_telephone_ni_quartier(self):
+        donnees = transfert.decoder(self.code)
+        self.assertNotIn("telephone", donnees)
+        self.assertNotIn("quartier", donnees)
+        self.assertNotIn("97000000", self.code)
+        self.assertNotIn("Secteur confidentiel", self.code)
+        self.assertNotIn("telephone", self.code.lower())
+        self.assertNotIn("quartier", self.code.lower())
+
+    def test_qr_svg_produit_localement_sans_reseau(self):
+        with patch("socket.socket", side_effect=AssertionError("appel réseau interdit")):
+            svg = transfert.qr_svg(self.code)
+        self.assertIn("<svg", svg)
+        self.assertNotIn("<image", svg)
+
+    def test_page_reprise_exige_une_connexion(self):
+        reponse = Client().get(reverse("registre:reprendre"))
+        self.assertEqual(reponse.status_code, 302)
+        self.assertIn("/connexion/", reponse["Location"])
+
+    def test_page_reprise_refuse_un_code_abime(self):
+        self.client.force_login(self.user_accueil)
+        reponse = self.client.post(
+            reverse("registre:reprendre"),
+            {"action": "verifier", "code": self._modifier_un_caractere()},
+        )
+        self.assertEqual(reponse.status_code, 200)
+        self.assertContains(reponse, "somme de contrôle")
+        self.assertFalse(Enfant.objects.filter(centre=self.centre_accueil).exists())
+
+    def test_reprise_cree_enfant_dans_le_centre_de_l_agent(self):
+        self.client.force_login(self.user_accueil)
+        reponse_verification = self.client.post(
+            reverse("registre:reprendre"),
+            {"action": "verifier", "code": self.code},
+        )
+        self.assertEqual(reponse_verification.status_code, 200)
+        self.assertContains(reponse_verification, "Récapitulatif avant création")
+        self.assertContains(reponse_verification, "3")
+
+        reponse = self.client.post(
+            reverse("registre:reprendre"),
+            {
+                "action": "confirmer",
+                "code": self.code,
+                "numero_local": "ACC-001",
+            },
+        )
+        self.assertEqual(reponse.status_code, 302)
+        self.assertFalse(
+            Enfant.objects.filter(centre=self.centre_origine, numero="ACC-001").exists()
+        )
+        enfants = Enfant.objects.filter(centre=self.centre_accueil)
+        self.assertEqual(enfants.count(), 1)
+        enfant_repris = enfants.get()
+        self.assertEqual(enfant_repris.numero, "ACC-001")
+        self.assertEqual(enfant_repris.numero_origine, "ORIG-007")
+        self.assertEqual(enfant_repris.nom, "Tossou")
+        self.assertEqual(enfant_repris.prenom, "Adjoua")
+        self.assertEqual(enfant_repris.date_naissance, self.enfant.date_naissance)
+        self.assertEqual(enfant_repris.nom_mere, "Kpadonou Solange")
+        self.assertEqual(enfant_repris.date_reprise, date.today())
+        self.assertEqual(enfant_repris.doses.count(), 3)
+
+    def test_doses_reprises_conservent_leur_date_d_origine(self):
+        self.client.force_login(self.user_accueil)
+        self.client.post(
+            reverse("registre:reprendre"),
+            {
+                "action": "confirmer",
+                "code": self.code,
+                "numero_local": "ACC-002",
+            },
+        )
+        enfant_repris = Enfant.objects.get(centre=self.centre_accueil)
+        self.assertEqual(enfant_repris.doses_recues(), self.dates_doses)
+
+    def test_reprise_enfant_deja_present_ne_cree_pas_de_doublon(self):
+        enfant_existant = Enfant.objects.create(
+            centre=self.centre_accueil,
+            numero="ACC-EXISTANT",
+            nom="Tossou",
+            prenom="Adjoua",
+            sexe="F",
+            date_naissance=self.enfant.date_naissance,
+            nom_mere="Kpadonou Solange",
+            cree_par=self.user_accueil,
+        )
+        Dose.objects.create(
+            enfant=enfant_existant,
+            cle="bcg",
+            date_administration=self.enfant.date_naissance,
+            agent=self.user_accueil,
+        )
+        self.client.force_login(self.user_accueil)
+
+        reponse_verification = self.client.post(
+            reverse("registre:reprendre"),
+            {"action": "verifier", "code": self.code},
+        )
+        self.assertContains(reponse_verification, "Aucun doublon")
+        self.assertContains(reponse_verification, "ACC-EXISTANT")
+
+        reponse = self.client.post(
+            reverse("registre:reprendre"),
+            {"action": "confirmer", "code": self.code},
+        )
+        self.assertEqual(reponse.status_code, 302)
+        self.assertEqual(Enfant.objects.filter(centre=self.centre_accueil).count(), 1)
+        enfant_existant.refresh_from_db()
+        self.assertEqual(enfant_existant.numero_origine, "ORIG-007")
+        self.assertEqual(
+            enfant_existant.doses_recues().get("penta_1"),
+            self.dates_doses["penta_1"],
+        )
+        self.assertEqual(
+            enfant_existant.doses_recues().get("var_1"),
+            self.dates_doses["var_1"],
+        )
+        self.assertEqual(
+            enfant_existant.doses_recues().get("bcg"),
+            self.enfant.date_naissance,
+        )
+
+    def test_reprise_refuse_un_numero_local_deja_utilise(self):
+        Enfant.objects.create(
+            centre=self.centre_accueil,
+            numero="ACC-DOUBLON",
+            nom="Autre",
+            prenom="Enfant",
+            sexe="M",
+            date_naissance=date.today() - timedelta(days=30),
+            nom_mere="Mère",
+            cree_par=self.user_accueil,
+        )
+        self.client.force_login(self.user_accueil)
+        reponse = self.client.post(
+            reverse("registre:reprendre"),
+            {
+                "action": "confirmer",
+                "code": self.code,
+                "numero_local": "ACC-DOUBLON",
+            },
+        )
+        self.assertEqual(reponse.status_code, 200)
+        self.assertContains(reponse, "déjà utilisé")
+        self.assertEqual(
+            Enfant.objects.filter(centre=self.centre_accueil).count(), 1
+        )
+
+    def test_reprise_sans_numero_local_refusee(self):
+        self.client.force_login(self.user_accueil)
+        reponse = self.client.post(
+            reverse("registre:reprendre"),
+            {"action": "confirmer", "code": self.code, "numero_local": ""},
+        )
+        self.assertEqual(reponse.status_code, 200)
+        self.assertContains(reponse, "numéro de registre local")
+        self.assertEqual(
+            Enfant.objects.filter(centre=self.centre_accueil).count(), 0
+        )
+
+    def test_fiche_de_rendez_vous_porte_le_code_et_le_qr(self):
+        self.client.force_login(self.user_origine)
+        reponse = self.client.get(
+            reverse("registre:rendez_vous", args=[self.enfant.pk])
+        )
+        self.assertEqual(reponse.status_code, 200)
+        contenu = reponse.content.decode("utf-8")
+        self.assertIn("<svg", contenu)
+        self.assertIn("Transfert vers un autre centre", contenu)
+        correspondance = re.search(r"RGVX1(?:-[A-Z0-9]+)+", contenu)
+        self.assertIsNotNone(correspondance)
+        code_affiche = correspondance.group(0)
+        donnees = transfert.decoder(code_affiche)
+        self.assertEqual(donnees["doses"], self.dates_doses)
+
+    def test_fiche_affiche_la_mention_de_transfert(self):
+        self.client.force_login(self.user_accueil)
+        self.client.post(
+            reverse("registre:reprendre"),
+            {
+                "action": "confirmer",
+                "code": self.code,
+                "numero_local": "ACC-003",
+            },
+        )
+        enfant_repris = Enfant.objects.get(centre=self.centre_accueil)
+        reponse = self.client.get(
+            reverse("registre:enfant", args=[enfant_repris.pk])
+        )
+        self.assertContains(reponse, "Enfant repris d'un autre centre")
+        self.assertContains(reponse, "ORIG-007")

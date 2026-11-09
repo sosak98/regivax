@@ -9,6 +9,7 @@ app_name = "registre"
 urlpatterns = [
     path("", views.accueil, name="accueil"),
     path("enfant/nouveau/", views.nouvel_enfant, name="nouvel_enfant"),
+    path("enfant/reprendre/", views.reprendre, name="reprendre"),
     path("enfant/<int:pk>/", views.enfant, name="enfant"),
     path("enfant/<int:pk>/rendez-vous/", views.rendez_vous, name="rendez_vous"),
     path("seance/", views.seance, name="seance"),

@@ -25,9 +25,18 @@ Le module autonome `registre/calendrier.py` (bibliothèque standard Python uniqu
 - Recherche rapide dans le registre du centre par nom, prénom, numéro du registre papier ou nom de la mère.
 - Inscription d'un enfant avec contrôle d'unicité du numéro dans le centre et refus d'une date de naissance future.
 - Fiche vaccinale de l'enfant avec saisie idempotente des doses et rejet de toute clé inconnue du calendrier.
-- Fiche de rendez-vous imprimable pour la famille.
+- Fiche de rendez-vous imprimable pour la famille, portant un code de transfert et son code QR.
+- Reprise d'un enfant déjà enregistré dans un autre centre à partir du code de transfert de sa fiche papier, sans ressaisie complète et sans doublon dans le centre d'accueil.
 - Rapport de fin de séance journalier (`?jour=AAAA-MM-JJ`) avec répartition par antigène et tranche d'âge à la date d'administration (moins de 1 an, 1 an et plus), et export local JSON (`dataValueSets`) et CSV pour import DHIS2.
 - Identifiant d'organisation provisoire distinct (`BJ-FOSA-PROVISOIRE-<id>`) lorsque le code FOSA officiel n'est pas renseigné, et table de correspondance UID DHIS2 laissée vide par conception.
+
+## Reprise d'un enfant déjà enregistré ailleurs
+
+La fiche de rendez-vous imprimable comporte un bloc Transfert avec un code recopiable à la main et un code QR du même contenu. Le code encode uniquement le numéro de registre, le nom, le prénom, le sexe, la date de naissance, le nom de la mère et les doses reçues avec leur date. Il ne contient ni téléphone ni quartier. Il est produit localement, sans appel réseau, au format `RGVX1`, en base32 sans caractères ambigus, avec une somme de contrôle finale.
+
+La page `/enfant/reprendre/`, accessible depuis le registre, permet à l'agent d'un autre centre de saisir ce code. L'application vérifie la somme de contrôle, refuse un code abîmé ou tronqué, affiche un récapitulatif puis attend une confirmation avant toute écriture. À la confirmation, la fiche est créée dans le centre de l'agent avec un numéro de registre local, le numéro d'origine est conservé et les doses sont reprises avec leurs dates réelles. Si un enfant du centre porte déjà les mêmes nom, prénom et date de naissance, aucun doublon n'est créé : les doses absentes sont complétées sur la fiche existante.
+
+Limites : un poste sans caméra saisit le code à la main, le code QR n'est qu'un confort, et si la famille a perdu sa fiche la réinscription classique reste possible.
 
 ## Structure du projet
 
@@ -48,6 +57,7 @@ registre/
   calendrier.py
   models.py
   snis.py
+  transfert.py
   views.py
   forms.py
   admin.py
