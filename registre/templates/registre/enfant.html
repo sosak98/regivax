@@ -1,0 +1,191 @@
+{% extends "registre/base.html" %}
+
+{% block titre %}{{ enfant.nom }} {{ enfant.prenom }}{% endblock %}
+
+{% block contenu %}
+<div class="carte">
+    <div class="carte-entete">
+        <div>
+            <h1>{{ enfant.nom }} {{ enfant.prenom }}</h1>
+            <p class="texte-discret">
+                Numéro de registre : <span class="code-mono">{{ enfant.numero }}</span>
+                - Centre : {{ centre.nom }}
+            </p>
+        </div>
+        <div class="barre-actions no-print">
+            <a href="{% url 'registre:rendez_vous' enfant.pk %}" class="bouton bouton-principal">Fiche de rendez-vous imprimable</a>
+            <a href="{% url 'registre:accueil' %}" class="bouton bouton-secondaire">Retour au registre</a>
+        </div>
+    </div>
+
+    <div class="grille-infos">
+        <div class="info-bloc">
+            <div class="info-libelle">Sexe</div>
+            <div class="info-valeur">{{ enfant.get_sexe_display }}</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Date de naissance</div>
+            <div class="info-valeur">{{ enfant.date_naissance|date:"d/m/Y" }} ({{ age_mois }} mois)</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Nom de la mère</div>
+            <div class="info-valeur">{{ enfant.nom_mere }}</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Téléphone</div>
+            <div class="info-valeur">{{ enfant.telephone|default:"Non renseigné" }}</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Quartier ou village</div>
+            <div class="info-valeur">{{ enfant.quartier|default:"Non renseigné" }}</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Prochain rendez-vous</div>
+            <div class="info-valeur">
+                {% if prochain_rdv %}
+                    {{ prochain_rdv.nom }} ({{ prochain_rdv.date_prevue|date:"d/m/Y" }})
+                {% else %}
+                    Aucune dose en attente
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if depasse_rattrapage %}
+    <div class="alerte alerte-info" style="margin-top: 14px;">
+        Âge supérieur à {{ age_limite_rattrapage_mois }} mois (limite usuelle de rattrapage du calendrier de routine).
+    </div>
+    {% endif %}
+</div>
+
+<div class="grille-stats">
+    <div class="stat-carte">
+        <div class="stat-valeur">{{ couverture.recus }} / {{ couverture.total }}</div>
+        <div class="stat-libelle">Doses reçues</div>
+    </div>
+    <div class="stat-carte">
+        <div class="stat-valeur">{{ couverture.en_retard }}</div>
+        <div class="stat-libelle">En retard</div>
+    </div>
+    <div class="stat-carte">
+        <div class="stat-valeur">{{ couverture.aujourd_hui }}</div>
+        <div class="stat-libelle">Prévues aujourd'hui</div>
+    </div>
+    <div class="stat-carte">
+        <div class="stat-valeur">{{ couverture.a_venir }}</div>
+        <div class="stat-libelle">À venir</div>
+    </div>
+    <div class="stat-carte">
+        <div class="stat-valeur">{{ couverture.maternite }}</div>
+        <div class="stat-libelle">À la maternité</div>
+    </div>
+</div>
+
+<div class="carte">
+    <h2>Calendrier vaccinal et saisie des doses</h2>
+    <p class="texte-discret no-print">
+        Cochez les doses administrées lors de la séance puis validez. Les doses déjà enregistrées ne peuvent pas être saisies en double.
+    </p>
+
+    <form method="post" action="{% url 'registre:enfant' enfant.pk %}">
+        {% csrf_token %}
+
+        <div class="grille-formulaire no-print" style="margin-bottom: 14px;">
+            <div class="champ-groupe">
+                <label for="id_date_administration">Date d'administration</label>
+                <input
+                    type="date"
+                    id="id_date_administration"
+                    name="date_administration"
+                    value="{{ aujourd_hui|date:'Y-m-d' }}"
+                    max="{{ aujourd_hui|date:'Y-m-d' }}"
+                    min="{{ enfant.date_naissance|date:'Y-m-d' }}"
+                >
+            </div>
+            <div class="champ-groupe">
+                <label for="id_lot">Numéro de lot commun (optionnel)</label>
+                <input
+                    type="text"
+                    id="id_lot"
+                    name="lot"
+                    placeholder="Ex. : LOT-2026-A"
+                >
+            </div>
+            <div class="champ-groupe" style="display: flex; align-items: flex-end;">
+                <button type="submit" class="bouton bouton-principal">Enregistrer les doses sélectionnées</button>
+            </div>
+        </div>
+
+        <div class="table-conteneur">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="no-print">Saisie</th>
+                        <th>Antigène / Dose</th>
+                        <th>Âge cible</th>
+                        <th>Maladies ciblées</th>
+                        <th>Voie</th>
+                        <th>Date prévue ou réelle</th>
+                        <th>Statut</th>
+                        <th>Lot</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in planning %}
+                    <tr>
+                        <td class="no-print">
+                            {% if item.statut != "Reçu" %}
+                            <input
+                                type="checkbox"
+                                name="cles"
+                                value="{{ item.cle }}"
+                                aria-label="Sélectionner {{ item.nom }}"
+                            >
+                            {% else %}
+                            <span class="texte-discret">Saisi</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong>{{ item.nom }}</strong>
+                            {% if item.categorie == "supplementation" %}
+                            <div class="texte-discret">Supplémentation</div>
+                            {% endif %}
+                        </td>
+                        <td>{{ item.age_affichage }}</td>
+                        <td>{{ item.maladies }}</td>
+                        <td>{{ item.voie }}</td>
+                        <td>{{ item.date_prevue|date:"d/m/Y" }}</td>
+                        <td>
+                            {% if item.statut == "Reçu" %}
+                                <span class="badge badge-recu">Reçu</span>
+                            {% elif item.statut == "À la maternité" %}
+                                <span class="badge badge-maternite">À la maternité</span>
+                            {% elif item.statut == "En retard" %}
+                                <span class="badge badge-retard">En retard ({{ item.retard_jours }} j)</span>
+                            {% elif item.statut == "Aujourd'hui" %}
+                                <span class="badge badge-aujourdhui">Aujourd'hui</span>
+                            {% else %}
+                                <span class="badge badge-avenir">À venir</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.statut == "Reçu" %}
+                                {{ item.lot|default:"-" }}
+                            {% else %}
+                                <input
+                                    type="text"
+                                    name="lot_{{ item.cle }}"
+                                    placeholder="Lot"
+                                    class="no-print"
+                                    style="min-width: 95px;"
+                                >
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </form>
+</div>
+{% endblock %}

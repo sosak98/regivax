@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: regivax
+    runtime: python
+    plan: free
+    buildCommand: ./build.sh
+    startCommand: gunicorn regivax.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: APERCU
+        value: "1"
+      - key: ALLOWED_HOSTS
+        value: .onrender.com
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://*.onrender.com

@@ -1,0 +1,109 @@
+{% extends "registre/base.html" %}
+
+{% block titre %}Registre du centre{% endblock %}
+
+{% block contenu %}
+<div class="carte">
+    <div class="carte-entete">
+        <div>
+            <h1>Registre vaccinal du centre</h1>
+            <p class="texte-discret">
+                {{ centre.nom }} ({{ centre.commune }}, {{ centre.zone_sanitaire }})
+                - {{ total_centre }} enfant(s) inscrit(s)
+            </p>
+        </div>
+        <div class="barre-actions no-print">
+            <a href="{% url 'registre:nouvel_enfant' %}" class="bouton bouton-principal">Inscrire un enfant</a>
+            <a href="{% url 'registre:seance' %}" class="bouton bouton-secondaire">Rapport de séance</a>
+        </div>
+    </div>
+
+    <form method="get" action="{% url 'registre:accueil' %}" class="barre-recherche no-print">
+        <input
+            type="search"
+            name="q"
+            value="{{ q }}"
+            placeholder="Rechercher par nom, prénom, numéro de registre ou nom de la mère..."
+            aria-label="Rechercher un enfant"
+        >
+        <button type="submit" class="bouton bouton-principal">Rechercher</button>
+        {% if q %}
+        <a href="{% url 'registre:accueil' %}" class="bouton bouton-secondaire">Réinitialiser</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="carte">
+    {% if q %}
+    <p class="texte-discret">Résultats pour « {{ q }} » : {{ lignes_enfants|length }} dossier(s).</p>
+    {% endif %}
+
+    {% if lignes_enfants %}
+    <div class="table-conteneur">
+        <table>
+            <thead>
+                <tr>
+                    <th>Numéro</th>
+                    <th>Enfant</th>
+                    <th>Sexe</th>
+                    <th>Naissance (âge)</th>
+                    <th>Mère</th>
+                    <th>Doses reçues</th>
+                    <th>Prochain rendez-vous</th>
+                    <th class="no-print">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in lignes_enfants %}
+                <tr>
+                    <td><span class="code-mono">{{ ligne.enfant.numero }}</span></td>
+                    <td>
+                        <a href="{% url 'registre:enfant' ligne.enfant.pk %}">
+                            <strong>{{ ligne.enfant.nom }} {{ ligne.enfant.prenom }}</strong>
+                        </a>
+                        {% if ligne.enfant.quartier %}
+                        <div class="texte-discret">{{ ligne.enfant.quartier }}</div>
+                        {% endif %}
+                    </td>
+                    <td>{{ ligne.enfant.sexe }}</td>
+                    <td>
+                        {{ ligne.enfant.date_naissance|date:"d/m/Y" }}
+                        <div class="texte-discret">{{ ligne.age_mois }} mois</div>
+                    </td>
+                    <td>{{ ligne.enfant.nom_mere }}</td>
+                    <td>
+                        <strong>{{ ligne.couverture.recus }}</strong> / {{ ligne.couverture.total }}
+                        {% if ligne.couverture.en_retard %}
+                        <div class="texte-discret">{{ ligne.couverture.en_retard }} en retard</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ligne.prochain_rdv %}
+                            <div>{{ ligne.prochain_rdv.nom }}</div>
+                            {% if ligne.prochain_rdv.statut == "En retard" %}
+                                <span class="badge badge-retard">En retard ({{ ligne.prochain_rdv.retard_jours }} j)</span>
+                            {% elif ligne.prochain_rdv.statut == "Aujourd'hui" %}
+                                <span class="badge badge-aujourdhui">Aujourd'hui</span>
+                            {% else %}
+                                <span class="badge badge-avenir">{{ ligne.prochain_rdv.date_prevue|date:"d/m/Y" }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge badge-recu">Calendrier complet</span>
+                        {% endif %}
+                    </td>
+                    <td class="no-print">
+                        <div class="barre-actions">
+                            <a href="{% url 'registre:enfant' ligne.enfant.pk %}" class="bouton bouton-secondaire bouton-petit">Fiche</a>
+                            <a href="{% url 'registre:rendez_vous' ligne.enfant.pk %}" class="bouton bouton-secondaire bouton-petit">Rendez-vous</a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="texte-discret">Aucun enfant ne correspond à cette recherche dans le registre du centre.</p>
+    {% endif %}
+</div>
+{% endblock %}

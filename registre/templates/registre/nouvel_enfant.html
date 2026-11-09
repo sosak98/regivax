@@ -1,0 +1,48 @@
+{% extends "registre/base.html" %}
+
+{% block titre %}Nouvel enfant{% endblock %}
+
+{% block contenu %}
+<div class="carte">
+    <div class="carte-entete">
+        <div>
+            <h1>Inscrire un enfant au registre</h1>
+            <p class="texte-discret">Centre : {{ centre.nom }} ({{ centre.commune }})</p>
+        </div>
+        <a href="{% url 'registre:accueil' %}" class="bouton bouton-secondaire">Retour au registre</a>
+    </div>
+
+    <form method="post" novalidate>
+        {% csrf_token %}
+
+        {% if formulaire.non_field_errors %}
+        <div class="alerte alerte-error">
+            {% for erreur in formulaire.non_field_errors %}
+            <div>{{ erreur }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="grille-formulaire">
+            {% for champ in formulaire %}
+            <div class="champ-groupe">
+                <label for="{{ champ.id_for_label }}">{{ champ.label }}{% if champ.field.required %} *{% endif %}</label>
+                {{ champ }}
+                {% if champ.errors %}
+                <div class="erreur-champ">
+                    {% for erreur in champ.errors %}
+                    <div>{{ erreur }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="barre-actions">
+            <button type="submit" class="bouton bouton-principal">Enregistrer l'inscription</button>
+            <a href="{% url 'registre:accueil' %}" class="bouton bouton-secondaire">Annuler</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

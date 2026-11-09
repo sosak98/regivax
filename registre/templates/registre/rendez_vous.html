@@ -1,0 +1,104 @@
+{% extends "registre/base.html" %}
+
+{% block titre %}Fiche de rendez-vous - {{ enfant.nom }} {{ enfant.prenom }}{% endblock %}
+
+{% block contenu %}
+<div class="carte">
+    <div class="carte-entete">
+        <div>
+            <h1>Fiche de rendez-vous vaccinal</h1>
+            <p class="texte-discret">
+                {{ centre.nom }} ({{ centre.commune }})
+                {% if centre.telephone %} - Tél. : {{ centre.telephone }}{% endif %}
+            </p>
+        </div>
+        <div class="barre-actions no-print">
+            <button type="button" onclick="window.print()" class="bouton bouton-principal">Imprimer la fiche</button>
+            <a href="{% url 'registre:enfant' enfant.pk %}" class="bouton bouton-secondaire">Retour à la fiche</a>
+        </div>
+    </div>
+
+    <div class="grille-infos" style="margin-bottom: 16px;">
+        <div class="info-bloc">
+            <div class="info-libelle">Enfant</div>
+            <div class="info-valeur">{{ enfant.nom }} {{ enfant.prenom }} ({{ enfant.get_sexe_display }})</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Numéro de registre</div>
+            <div class="info-valeur">{{ enfant.numero }}</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Date de naissance</div>
+            <div class="info-valeur">{{ enfant.date_naissance|date:"d/m/Y" }} ({{ age_mois }} mois)</div>
+        </div>
+        <div class="info-bloc">
+            <div class="info-libelle">Nom de la mère</div>
+            <div class="info-valeur">{{ enfant.nom_mere }}</div>
+        </div>
+    </div>
+
+    {% if prochain_rdv %}
+    <div class="info-bloc" style="background-color: #eff6ff; border-color: #bfdbfe; margin-bottom: 16px;">
+        <div class="info-libelle">Prochain rendez-vous recommandé</div>
+        <div class="info-valeur" style="font-size: 18px; color: #1e40af;">
+            {% if prochain_rdv.statut == "En retard" %}
+                À rattraper dès que possible (date prévue dépassée : {{ prochain_rdv.date_prevue|date:"d/m/Y" }})
+            {% elif prochain_rdv.statut == "Aujourd'hui" %}
+                Aujourd'hui ({{ prochain_rdv.date_prevue|date:"d/m/Y" }})
+            {% else %}
+                Le {{ prochain_rdv.date_prevue|date:"d/m/Y" }}
+            {% endif %}
+        </div>
+        <div style="margin-top: 6px;">
+            Doses prévues à cette date :
+            <strong>
+                {% for d in doses_prochain_jour %}{{ d.nom }}{% if not forloop.last %}, {% endif %}{% endfor %}
+            </strong>
+        </div>
+    </div>
+    {% else %}
+    <div class="alerte alerte-success">
+        Toutes les doses prévues au calendrier ont été enregistrées ({{ couverture.recus }} / {{ couverture.total }}).
+    </div>
+    {% endif %}
+
+    {% if doses_restantes %}
+    <h2>Échéancier des prochaines doses</h2>
+    <div class="table-conteneur">
+        <table>
+            <thead>
+                <tr>
+                    <th>Antigène / Dose</th>
+                    <th>Âge cible</th>
+                    <th>Date prévue</th>
+                    <th>Statut</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in doses_restantes %}
+                <tr>
+                    <td><strong>{{ item.nom }}</strong></td>
+                    <td>{{ item.age_affichage }}</td>
+                    <td>{{ item.date_prevue|date:"d/m/Y" }}</td>
+                    <td>
+                        {% if item.statut == "En retard" %}
+                            <span class="badge badge-retard">En retard ({{ item.retard_jours }} j)</span>
+                        {% elif item.statut == "Aujourd'hui" %}
+                            <span class="badge badge-aujourdhui">Aujourd'hui</span>
+                        {% else %}
+                            <span class="badge badge-avenir">À venir</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <p class="texte-discret" style="margin-top: 16px;">
+        Mémento administratif délivré au centre de santé le {{ aujourd_hui|date:"d/m/Y" }}.
+        Ce document ne remplace pas le carnet de santé conservé par la famille et ne constitue pas un acte médical.
+    </p>
+</div>
+{% endblock %}

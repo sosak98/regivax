@@ -1,0 +1,45 @@
+{% extends "registre/base.html" %}
+
+{% block titre %}Connexion{% endblock %}
+
+{% block contenu %}
+<div class="carte" style="max-width: 460px; margin: 40px auto;">
+    <h1>Connexion à RegiVax</h1>
+    <p class="texte-discret">
+        Accès réservé aux agents rattachés au centre de santé.
+    </p>
+
+    <form method="post" action="{% url 'registre:connexion' %}">
+        {% csrf_token %}
+        {% if next %}
+        <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+
+        {% if formulaire.non_field_errors %}
+        <div class="alerte alerte-error">
+            {% for erreur in formulaire.non_field_errors %}
+            <div>{{ erreur }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="champ-groupe">
+            <label for="{{ formulaire.username.id_for_label }}">{{ formulaire.username.label }}</label>
+            {{ formulaire.username }}
+            {% if formulaire.username.errors %}
+            <div class="erreur-champ">{{ formulaire.username.errors }}</div>
+            {% endif %}
+        </div>
+
+        <div class="champ-groupe">
+            <label for="{{ formulaire.password.id_for_label }}">{{ formulaire.password.label }}</label>
+            {{ formulaire.password }}
+            {% if formulaire.password.errors %}
+            <div class="erreur-champ">{{ formulaire.password.errors }}</div>
+            {% endif %}
+        </div>
+
+        <button type="submit" class="bouton bouton-principal" style="width: 100%;">Se connecter</button>
+    </form>
+</div>
+{% endblock %}

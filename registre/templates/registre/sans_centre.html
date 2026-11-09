@@ -1,0 +1,21 @@
+{% extends "registre/base.html" %}
+
+{% block titre %}Centre non rattaché{% endblock %}
+
+{% block contenu %}
+<div class="carte" style="max-width: 620px; margin: 30px auto;">
+    <h1>Aucun centre de santé rattaché</h1>
+    <p>
+        Votre compte utilisateur est authentifié, mais aucun profil d'agent rattaché à un centre de santé ne lui est associé pour le moment.
+    </p>
+    <p class="texte-discret">
+        Pour consulter le registre ou saisir des doses, un administrateur local doit associer votre compte à un centre de santé depuis l'interface d'administration.
+    </p>
+    {% if not apercu_actif %}
+    <form method="post" action="{% url 'registre:deconnexion' %}" style="margin-top: 16px;">
+        {% csrf_token %}
+        <button type="submit" class="bouton bouton-secondaire">Se déconnecter</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}
