@@ -387,6 +387,11 @@ def reprendre(request):
                         "Indiquez le numéro de registre local attribué par le "
                         "centre avant de créer la fiche."
                     )
+                elif len(numero_local) > 50:
+                    erreur = (
+                        "Le numéro de registre local ne peut pas dépasser "
+                        "50 caractères."
+                    )
                 elif Enfant.objects.filter(
                     centre=centre, numero=numero_local
                 ).exists():
