@@ -20,8 +20,7 @@ export PORT="${PORT:-8000}"
 "$PYTHON" manage.py migrate --no-input
 "$PYTHON" manage.py collectstatic --no-input
 
-if ! "$PYTHON" manage.py shell -c "import sys; from registre.models import Enfant; sys.exit(0 if Enfant.objects.exists() else 1)"; then
-    "$PYTHON" manage.py jeu_demonstration
-fi
+# En mode démonstration, le jeu fictif est régénéré à chaque démarrage.
+"$PYTHON" manage.py jeu_demonstration --reinitialiser
 
 exec "$GUNICORN" regivax.wsgi:application --bind "0.0.0.0:$PORT"
